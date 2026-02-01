@@ -12,6 +12,7 @@ export class SearchModal extends Modal {
 	private results: SearchResult[] = [];
 	private selectedIndex: number = 0;
 	private caseSensitive: boolean = false;
+	private lastSearchedQuery: string = "";
 
 	constructor(app: App, caseSensitive: boolean = false) {
 		super(app);
@@ -49,11 +50,20 @@ export class SearchModal extends Modal {
 			cls: "block-search-results",
 		});
 
-		// Handle input
+		// Create Search button
+		const searchBtn = inputContainer.createEl("button", {
+			text: "Search",
+			cls: "block-search-button",
+		});
+		searchBtn.addEventListener("click", () => {
+			this.performSearch(resultsContainer);
+		});
+
+		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
 			this.selectedIndex = 0;
-			this.updateResults(resultsContainer);
+			this.updateResults(resultsContainer); // will show prompt to press Enter or click Search
 		});
 
 		// Handle keyboard navigation
@@ -71,10 +81,16 @@ export class SearchModal extends Modal {
 				this.updateResults(resultsContainer);
 			} else if (e.key === "Enter") {
 				e.preventDefault();
-				if (this.results && this.results.length > 0) {
-					const selected = this.results[this.selectedIndex];
-					if (selected) {
-						this.jumpToBlock(selected.blocks[0]!);
+				if (!this.query.trim()) return;
+				// If query changed since last search, perform search; otherwise, jump to selected result
+				if (this.query !== this.lastSearchedQuery) {
+					this.performSearch(resultsContainer);
+				} else {
+					if (this.results && this.results.length > 0) {
+						const selected = this.results[this.selectedIndex];
+						if (selected) {
+							this.jumpToBlock(selected.blocks[0]!);
+						}
 					}
 				}
 			}
@@ -95,6 +111,16 @@ export class SearchModal extends Modal {
 			return;
 		}
 
+		// If user typed a query but hasn't executed the search yet, prompt them
+		if (this.query.trim() && this.query !== this.lastSearchedQuery) {
+			resultsContainer.createEl("div", {
+				text: 'Press Enter or click "Search" to start searching blocks...',
+				cls: "block-search-ready",
+			});
+			return;
+		}
+
+		// Perform the actual search for the last executed query
 		this.results = searchBlocks(this.query, this.allBlocks, this.caseSensitive);
 
 		if (this.results.length === 0) {
@@ -154,6 +180,12 @@ export class SearchModal extends Modal {
 				this.jumpToBlock(result.blocks[0]!);
 			});
 		});
+	}
+
+	private performSearch(resultsContainer: HTMLElement) {
+		this.lastSearchedQuery = this.query;
+		this.selectedIndex = 0;
+		this.updateResults(resultsContainer);
 	}
 
 	private highlightTextWithRegex(
