@@ -39,6 +39,7 @@ export class SearchModal extends Modal {
 		const inputContainer = contentEl.createEl("div", {
 			cls: "block-search-input-container",
 		});
+		inputContainer.setCssStyles({ position: 'relative' });
 
 		const input = inputContainer.createEl("input", {
 			type: "text",
@@ -66,6 +67,7 @@ export class SearchModal extends Modal {
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
 			this.selectedIndex = 0;
+			console.log('Input event fired, query:', this.query);
 			this.updateTagSuggestions(inputContainer, input);
 			this.updateResults(resultsContainer); // will show prompt to press Enter or click Search
 		});
@@ -226,6 +228,7 @@ export class SearchModal extends Modal {
 	}
 
 	private updateTagSuggestions(inputContainer: HTMLElement, input: HTMLInputElement) {
+		console.log('updateTagSuggestions called, enableOperators:', this.enableOperators, 'query:', this.query);
 		let suggEl = inputContainer.querySelector('.tag-suggestions') as HTMLElement;
 		if (this.enableOperators && this.query.startsWith('tag:#')) {
 			const partial = this.query.slice(6); // after 'tag:#'
@@ -241,6 +244,7 @@ export class SearchModal extends Modal {
 				}
 			});
 			const suggestions = Array.from(allTags).filter(tag => tag.toLowerCase().startsWith(('#' + partial).toLowerCase())).slice(0, 10);
+			console.log('Tag suggestions for', this.query, ':', suggestions);
 
 			if (!suggEl) {
 				suggEl = inputContainer.createEl('div', { cls: 'tag-suggestions' });
