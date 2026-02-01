@@ -1,18 +1,18 @@
-import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import { App, PluginSettingTab, Setting } from "obsidian";
+import BlockSearchPlugin from "./main";
 
-export interface MyPluginSettings {
-	mySetting: string;
+export interface BlockSearchSettings {
+	caseSensitive: boolean;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+export const DEFAULT_SETTINGS: BlockSearchSettings = {
+	caseSensitive: false
 }
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class BlockSearchSettingTab extends PluginSettingTab {
+	plugin: BlockSearchPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: BlockSearchPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -23,13 +23,12 @@ export class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+			.setName('Case sensitive search')
+			.setDesc('Perform case-sensitive matching when searching blocks')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.caseSensitive)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.caseSensitive = value;
 					await this.plugin.saveSettings();
 				}));
 	}
