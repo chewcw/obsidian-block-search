@@ -13,7 +13,7 @@ export default class BlockSearchPlugin extends Plugin {
 			id: 'block-search-open',
 			name: 'Open block search',
 			callback: () => {
-				new SearchModal(this.app, this.settings.caseSensitive).open();
+				new SearchModal(this.app, this.settings.caseSensitive, this.settings.enableOperators).open();
 			}
 		});
 

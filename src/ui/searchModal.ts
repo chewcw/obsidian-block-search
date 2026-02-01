@@ -12,11 +12,14 @@ export class SearchModal extends Modal {
 	private results: SearchResult[] = [];
 	private selectedIndex: number = 0;
 	private caseSensitive: boolean = false;
+	private enableOperators: boolean = false;
 	private lastSearchedQuery: string = "";
+	private searchQuery: string = "";
 
-	constructor(app: App, caseSensitive: boolean = false) {
+	constructor(app: App, caseSensitive: boolean = false, enableOperators: boolean = false) {
 		super(app);
 		this.caseSensitive = caseSensitive;
+		this.enableOperators = enableOperators;
 	}
 
 	async onOpen() {
@@ -63,6 +66,7 @@ export class SearchModal extends Modal {
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
 			this.selectedIndex = 0;
+			this.updateTagSuggestions(inputContainer, input);
 			this.updateResults(resultsContainer); // will show prompt to press Enter or click Search
 		});
 
@@ -121,7 +125,7 @@ export class SearchModal extends Modal {
 		}
 
 		// Perform the actual search for the last executed query
-		this.results = searchBlocks(this.query, this.allBlocks, this.caseSensitive);
+		// this.results is set in performSearch
 
 		if (this.results.length === 0) {
 			resultsContainer.createEl("div", {
@@ -155,8 +159,9 @@ export class SearchModal extends Modal {
 			// Build regexes for highlighting
 			const flags = (this.caseSensitive ? "g" : "gi");
 			let regexes: RegExp[];
-			if (this.query.includes(' ')) {
-				const terms = this.query.trim().split(/\s+/).filter(t => t.length > 0);
+			const queryToHighlight = this.searchQuery || this.query;
+			if (queryToHighlight.includes(' ')) {
+				const terms = queryToHighlight.trim().split(/\s+/).filter(t => t.length > 0);
 				regexes = terms.map(term => {
 					const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 					return new RegExp(escaped, flags);
@@ -164,9 +169,9 @@ export class SearchModal extends Modal {
 			} else {
 				let regex: RegExp;
 				try {
-					regex = new RegExp(this.query, flags);
+					regex = new RegExp(queryToHighlight, flags);
 				} catch (e) {
-					const escaped = this.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+					const escaped = queryToHighlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 					regex = new RegExp(escaped, flags);
 				}
 				regexes = [regex];
@@ -195,7 +200,89 @@ export class SearchModal extends Modal {
 	private performSearch(resultsContainer: HTMLElement) {
 		this.lastSearchedQuery = this.query;
 		this.selectedIndex = 0;
+
+		let blocksToSearch = this.allBlocks;
+		let queryForSearch = this.query;
+
+		if (this.enableOperators && this.query.startsWith('tag:#')) {
+			const tagMatch = this.query.match(/^tag:#([^ ]+)/);
+			if (tagMatch) {
+				const tag = '#' + tagMatch[1];
+				blocksToSearch = this.allBlocks.filter(block => {
+					const file = this.app.vault.getAbstractFileByPath(block.filePath);
+					if (!(file instanceof TFile)) return false;
+					const cache = this.app.metadataCache.getFileCache(file);
+					const frontmatterTags = cache?.frontmatter?.tags as string[] | undefined;
+					const inlineTags = cache?.tags?.map(t => t.tag) || [];
+					return (frontmatterTags?.includes(tag.slice(1)) ?? false) || inlineTags.includes(tag);
+				});
+				queryForSearch = this.query.replace(/^tag:#[^ ]+/, '').trim();
+			}
+		}
+
+		this.searchQuery = queryForSearch;
+		this.results = searchBlocks(this.searchQuery, blocksToSearch, this.caseSensitive);
 		this.updateResults(resultsContainer);
+	}
+
+	private updateTagSuggestions(inputContainer: HTMLElement, input: HTMLInputElement) {
+		let suggEl = inputContainer.querySelector('.tag-suggestions') as HTMLElement;
+		if (this.enableOperators && this.query.startsWith('tag:#')) {
+			const partial = this.query.slice(6); // after 'tag:#'
+			const allTags = new Set<string>();
+			this.app.vault.getFiles().forEach(file => {
+				const cache = this.app.metadataCache.getFileCache(file);
+				const frontmatterTags = cache?.frontmatter?.tags as string[] | undefined;
+				if (frontmatterTags) {
+					frontmatterTags.forEach((tag: string) => allTags.add('#' + tag));
+				}
+				if (cache?.tags) {
+					cache.tags.forEach(t => allTags.add(t.tag));
+				}
+			});
+			const suggestions = Array.from(allTags).filter(tag => tag.toLowerCase().startsWith(('#' + partial).toLowerCase())).slice(0, 10);
+
+			if (!suggEl) {
+				suggEl = inputContainer.createEl('div', { cls: 'tag-suggestions' });
+				suggEl.setCssStyles({
+					position: 'absolute',
+					top: '100%',
+					left: '0',
+					right: '0',
+					background: 'var(--background-primary)',
+					border: '1px solid var(--background-modifier-border)',
+					zIndex: '1000',
+					maxHeight: '200px',
+					overflowY: 'auto',
+				});
+			}
+			suggEl.empty();
+			suggestions.forEach(sugg => {
+				const item = suggEl.createEl('div', { text: sugg, cls: 'tag-suggestion-item' });
+				item.setCssStyles({
+					padding: '4px 8px',
+					cursor: 'pointer',
+				});
+				item.addEventListener('click', () => {
+					this.query = 'tag:' + sugg;
+					input.value = this.query;
+					suggEl.remove();
+					input.focus();
+				});
+				item.addEventListener('mouseenter', () => {
+					item.setCssStyles({
+						background: 'var(--background-modifier-hover)',
+					});
+				});
+				item.addEventListener('mouseleave', () => {
+					item.setCssStyles({
+						background: '',
+					});
+				});
+			});
+		} else {
+			if (suggEl) suggEl.remove();
+		}
 	}
 
 	private highlightTextWithRegexes(
@@ -203,7 +290,8 @@ export class SearchModal extends Modal {
 		text: string,
 		regexes: RegExp[]
 	) {
-		if (!this.query.trim()) {
+		const queryToHighlight = this.searchQuery || this.query;
+		if (!queryToHighlight.trim()) {
 			container.setText(text);
 			return;
 		}
@@ -253,11 +341,8 @@ export class SearchModal extends Modal {
 	}
 
 	private async jumpToBlock(block: Block) {
-		const file = this.app.vault.getAbstractFileByPath(
-			block.filePath
-		) as TFile;
-
-		if (!file) {
+		const file = this.app.vault.getAbstractFileByPath(block.filePath);
+		if (!(file instanceof TFile)) {
 			console.error(`File not found: ${block.filePath}`);
 			return;
 		}

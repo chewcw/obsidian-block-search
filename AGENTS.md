@@ -151,6 +151,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Provide defaults and validation in settings.
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
+- Always update the .github/implementation-summary.md after significant changes.
 
 **Don't**
 - Introduce network calls without an obvious user-facing reason and documentation.
