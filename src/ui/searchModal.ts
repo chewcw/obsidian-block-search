@@ -152,14 +152,24 @@ export class SearchModal extends Modal {
 
 			// Grouped block text with highlighting
 			const textEl = resultEl.createEl("div", { cls: "block-search-text" });
-			// Build regex for highlighting (reuse same logic as search)
+			// Build regexes for highlighting
 			const flags = (this.caseSensitive ? "g" : "gi");
-			let regex: RegExp;
-			try {
-				regex = new RegExp(this.query, flags);
-			} catch (e) {
-				const escaped = this.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-				regex = new RegExp(escaped, flags);
+			let regexes: RegExp[];
+			if (this.query.includes(' ')) {
+				const terms = this.query.trim().split(/\s+/).filter(t => t.length > 0);
+				regexes = terms.map(term => {
+					const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+					return new RegExp(escaped, flags);
+				});
+			} else {
+				let regex: RegExp;
+				try {
+					regex = new RegExp(this.query, flags);
+				} catch (e) {
+					const escaped = this.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+					regex = new RegExp(escaped, flags);
+				}
+				regexes = [regex];
 			}
 
 			result.blocks.forEach((blk) => {
@@ -167,7 +177,7 @@ export class SearchModal extends Modal {
 				const indent = "  ".repeat(blk.level);
 				const lineStr = `${indent}- ${blk.text}`;
 				const lineEl = textEl.createEl("div", { cls: "block-search-line-item" });
-				this.highlightTextWithRegex(lineEl, lineStr, regex);
+				this.highlightTextWithRegexes(lineEl, lineStr, regexes);
 			});
 
 			// Jump to button
@@ -188,32 +198,53 @@ export class SearchModal extends Modal {
 		this.updateResults(resultsContainer);
 	}
 
-	private highlightTextWithRegex(
+	private highlightTextWithRegexes(
 		container: HTMLElement,
 		text: string,
-		regex: RegExp
+		regexes: RegExp[]
 	) {
 		if (!this.query.trim()) {
 			container.setText(text);
 			return;
 		}
 
+		// Collect all matches
+		const matches: { start: number; end: number; text: string }[] = [];
+		for (const regex of regexes) {
+			const localRegex = new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : regex.flags + "g");
+			let m: RegExpExecArray | null;
+			while ((m = localRegex.exec(text)) !== null) {
+				matches.push({
+					start: m.index,
+					end: m.index + m[0].length,
+					text: m[0]
+				});
+				if (localRegex.lastIndex === m.index) localRegex.lastIndex++;
+			}
+		}
+
+		// Sort matches by start position
+		matches.sort((a, b) => a.start - b.start);
+
+		// Remove overlapping matches (keep the first one)
+		const filtered: typeof matches = [];
+		for (const match of matches) {
+			if (filtered.length === 0 || match.start >= filtered[filtered.length - 1]!.end) {
+				filtered.push(match);
+			}
+		}
+
+		// Now highlight
 		let lastIndex = 0;
-		// Use exec to find all matches and preserve original case
-		let m: RegExpExecArray | null;
-		const localRegex = new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : regex.flags + "g");
-		while ((m = localRegex.exec(text)) !== null) {
-			const index = m.index;
-			if (index > lastIndex) {
-				container.appendText(text.substring(lastIndex, index));
+		for (const match of filtered) {
+			if (match.start > lastIndex) {
+				container.appendText(text.substring(lastIndex, match.start));
 			}
 			const span = container.createEl("span", {
-				text: text.substring(index, index + m[0].length),
-				cls: "block-search-highlight",
+				text: match.text,
+				cls: "search-result-file-matched-text",
 			});
-			lastIndex = index + m[0].length;
-			// Avoid infinite loops for empty matches
-			if (localRegex.lastIndex === index) localRegex.lastIndex++;
+			lastIndex = match.end;
 		}
 
 		if (lastIndex < text.length) {

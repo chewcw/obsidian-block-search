@@ -16,14 +16,26 @@ export function searchBlocks(
 ): SearchResult[] {
 	if (!query.trim()) return [];
 
-	// Build regex from query; fallback to escaped literal if invalid
 	const flags = (caseSensitive ? "g" : "gi");
-	let regex: RegExp;
-	try {
-		regex = new RegExp(query, flags);
-	} catch (e) {
-		const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		regex = new RegExp(escaped, flags);
+	let regexes: RegExp[];
+
+	if (query.includes(' ')) {
+		// Multi-word AND search
+		const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
+		regexes = terms.map(term => {
+			const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			return new RegExp(escaped, flags);
+		});
+	} else {
+		// Single regex or literal
+		let regex: RegExp;
+		try {
+			regex = new RegExp(query, flags);
+		} catch (e) {
+			const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			regex = new RegExp(escaped, flags);
+		}
+		regexes = [regex];
 	}
 
 	// Group blocks into parent + nested children groups
@@ -55,20 +67,27 @@ export function searchBlocks(
 	const results: SearchResult[] = [];
 
 	groups.forEach((group) => {
-		let matchCount = 0;
-		let anyMatch = false;
-		for (const blk of group) {
-			const matches = blk.text.match(regex);
-			if (matches && matches.length > 0) {
-				anyMatch = true;
-				matchCount += matches.length;
+		let totalMatchCount = 0;
+		let allMatched = regexes.length > 0;
+		for (const regex of regexes) {
+			let termMatchCount = 0;
+			for (const blk of group) {
+				const matches = blk.text.match(regex);
+				if (matches) {
+					termMatchCount += matches.length;
+				}
 			}
+			if (termMatchCount === 0) {
+				allMatched = false;
+				break;
+			}
+			totalMatchCount += termMatchCount;
 		}
 
-		if (anyMatch) {
+		if (allMatched) {
 			results.push({
 				blocks: group,
-				matchScore: matchCount,
+				matchScore: totalMatchCount,
 			});
 		}
 	});
