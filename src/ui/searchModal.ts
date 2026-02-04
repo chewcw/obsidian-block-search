@@ -1,6 +1,9 @@
 import { App, Modal, TFile, MarkdownView } from "obsidian";
 import { Block, SearchResult } from "../types";
 import { searchBlocks, loadAllBlocks } from "../blocks/searcher";
+import { parseQuery } from "../search/queryParser";
+import { QueryNode, QueryTerm } from "../search/queryTypes";
+import { FileContext } from "../types";
 
 /**
  * Search modal for block search plugin
@@ -9,6 +12,7 @@ import { searchBlocks, loadAllBlocks } from "../blocks/searcher";
 export class SearchModal extends Modal {
 	private query: string = "";
 	private allBlocks: Block[] = [];
+	private fileContexts: Map<string, FileContext> = new Map();
 	private results: SearchResult[] = [];
 	private selectedIndex: number = 0;
 	private caseSensitive: boolean = false;
@@ -26,7 +30,9 @@ export class SearchModal extends Modal {
 
 		// Load all blocks from vault
 		try {
-			this.allBlocks = await loadAllBlocks(this.app);
+			const index = await loadAllBlocks(this.app);
+			this.allBlocks = index.blocks;
+			this.fileContexts = index.fileContexts;
 		} catch (error) {
 			contentEl.createEl("div", { text: `Error loading blocks: ${error}` });
 			return;
@@ -121,7 +127,20 @@ export class SearchModal extends Modal {
 		}
 
 		// Perform the actual search for the last executed query
-		this.results = searchBlocks(this.query, this.allBlocks, this.caseSensitive);
+		const searchResult = searchBlocks(
+			this.query,
+			this.allBlocks,
+			this.fileContexts,
+			this.caseSensitive
+		);
+		if (searchResult.errors.length > 0) {
+			resultsContainer.createEl("div", {
+				text: `Search query error: ${searchResult.errors[0]}`,
+				cls: "block-search-no-results",
+			});
+			return;
+		}
+		this.results = searchResult.results;
 
 		if (this.results.length === 0) {
 			resultsContainer.createEl("div", {
@@ -153,24 +172,7 @@ export class SearchModal extends Modal {
 			// Grouped block text with highlighting
 			const textEl = resultEl.createEl("div", { cls: "block-search-text" });
 			// Build regexes for highlighting
-			const flags = (this.caseSensitive ? "g" : "gi");
-			let regexes: RegExp[];
-			if (this.query.includes(' ')) {
-				const terms = this.query.trim().split(/\s+/).filter(t => t.length > 0);
-				regexes = terms.map(term => {
-					const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-					return new RegExp(escaped, flags);
-				});
-			} else {
-				let regex: RegExp;
-				try {
-					regex = new RegExp(this.query, flags);
-				} catch (e) {
-					const escaped = this.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-					regex = new RegExp(escaped, flags);
-				}
-				regexes = [regex];
-			}
+			const regexes = this.buildHighlightRegexes();
 
 			result.blocks.forEach((blk) => {
 				// Reconstruct a simple markdown representation with indentation
@@ -190,6 +192,72 @@ export class SearchModal extends Modal {
 				this.jumpToBlock(result.blocks[0]!);
 			});
 		});
+	}
+
+	private buildHighlightRegexes(): RegExp[] {
+		const parsed = parseQuery(this.query, { allowOperators: true });
+		const terms = new Set<string>();
+		const regexTerms: RegExp[] = [];
+
+		const collect = (node: QueryNode) => {
+			if (node.type === "term") {
+				this.collectTerm(node.term, terms, regexTerms);
+				return;
+			}
+			if (node.type === "and" || node.type === "or") {
+				node.terms.forEach(collect);
+			} else if (node.type === "not") {
+				collect(node.term);
+			}
+		};
+
+		collect(parsed.root);
+
+		const flags = this.caseSensitive ? "g" : "gi";
+		const regexes = [...regexTerms];
+		for (const term of terms) {
+			const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			regexes.push(new RegExp(escaped, flags));
+		}
+		return regexes;
+	}
+
+	private collectTerm(term: QueryTerm, textTerms: Set<string>, regexTerms: RegExp[]) {
+		if (term.kind === "text") {
+			if (term.isRegex) {
+				try {
+					const flags = this.caseSensitive
+						? term.regexFlags ?? ""
+						: `${term.regexFlags ?? ""}i`;
+					regexTerms.push(new RegExp(term.value, flags.includes("g") ? flags : `${flags}g`));
+				} catch {
+					// ignore invalid regex for highlighting
+				}
+			} else if (term.value.trim().length > 0) {
+				textTerms.add(term.value);
+			}
+			return;
+		}
+		if (term.kind === "operator") {
+			this.collectTermFromQuery(term.operand, textTerms, regexTerms);
+			return;
+		}
+		if (term.kind === "property") {
+			if (term.nameQuery) this.collectTermFromQuery(term.nameQuery, textTerms, regexTerms);
+			if (term.valueQuery) this.collectTermFromQuery(term.valueQuery, textTerms, regexTerms);
+		}
+	}
+
+	private collectTermFromQuery(node: QueryNode, textTerms: Set<string>, regexTerms: RegExp[]) {
+		if (node.type === "term") {
+			this.collectTerm(node.term, textTerms, regexTerms);
+			return;
+		}
+		if (node.type === "and" || node.type === "or") {
+			node.terms.forEach((t) => this.collectTermFromQuery(t, textTerms, regexTerms));
+		} else if (node.type === "not") {
+			this.collectTermFromQuery(node.term, textTerms, regexTerms);
+		}
 	}
 
 	private performSearch(resultsContainer: HTMLElement) {

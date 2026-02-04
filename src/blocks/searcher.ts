@@ -1,6 +1,9 @@
-import { App, TFile } from "obsidian";
-import { Block, SearchResult } from "../types";
+import { App } from "obsidian";
+import { Block, FileContext, SearchResult } from "../types";
+import { buildFileContext } from "./fileIndex";
 import { extractBlocksFromMarkdown } from "./parser";
+import { parseQuery } from "../search/queryParser";
+import { evaluateQuery, EvalContext, GroupContext } from "../search/queryEvaluator";
 
 /**
  * Searches blocks by query using case-insensitive partial matching
@@ -12,31 +15,13 @@ import { extractBlocksFromMarkdown } from "./parser";
 export function searchBlocks(
 	query: string,
 	blocks: Block[],
+	fileContexts: Map<string, FileContext>,
 	caseSensitive: boolean = false
-): SearchResult[] {
-	if (!query.trim()) return [];
+): { results: SearchResult[]; errors: string[] } {
+	if (!query.trim()) return { results: [], errors: [] };
 
-	const flags = (caseSensitive ? "g" : "gi");
-	let regexes: RegExp[];
-
-	if (query.includes(' ')) {
-		// Multi-word AND search
-		const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
-		regexes = terms.map(term => {
-			const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			return new RegExp(escaped, flags);
-		});
-	} else {
-		// Single regex or literal
-		let regex: RegExp;
-		try {
-			regex = new RegExp(query, flags);
-		} catch (e) {
-			const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			regex = new RegExp(escaped, flags);
-		}
-		regexes = [regex];
-	}
+	const parsed = parseQuery(query, { allowOperators: true });
+	if (parsed.errors.length > 0) return { results: [], errors: parsed.errors };
 
 	// Group blocks into parent + nested children groups
 	const groups: Block[][] = [];
@@ -67,29 +52,26 @@ export function searchBlocks(
 	const results: SearchResult[] = [];
 
 	groups.forEach((group) => {
-		let totalMatchCount = 0;
-		let allMatched = regexes.length > 0;
-		for (const regex of regexes) {
-			let termMatchCount = 0;
-			for (const blk of group) {
-				const matches = blk.text.match(regex);
-				if (matches) {
-					termMatchCount += matches.length;
-				}
-			}
-			if (termMatchCount === 0) {
-				allMatched = false;
-				break;
-			}
-			totalMatchCount += termMatchCount;
-		}
+		const root = group[0];
+		if (!root) return;
+		const fileContext = fileContexts.get(root.filePath);
+		if (!fileContext) return;
 
-		if (allMatched) {
-			results.push({
-				blocks: group,
-				matchScore: totalMatchCount,
-			});
-		}
+		const groupText = group.map((blk) => blk.searchText).join("\n");
+		const groupContext: GroupContext = { blocks: group, root, groupText };
+		const evalContext: EvalContext = {
+			file: fileContext,
+			group: groupContext,
+			caseSensitive,
+		};
+
+		const result = evaluateQuery(parsed.root, evalContext);
+		if (!result.matched) return;
+
+		results.push({
+			blocks: group,
+			matchScore: result.score,
+		});
 	});
 
 	// Sort by match score (descending), then by file name, then by starting line number
@@ -101,7 +83,7 @@ export function searchBlocks(
 		return a.blocks[0]!.lineNumber - b.blocks[0]!.lineNumber;
 	});
 
-	return results;
+	return { results, errors: [] };
 }
 
 /**
@@ -109,15 +91,25 @@ export function searchBlocks(
  * @param app The Obsidian app instance
  * @returns Promise resolving to array of all blocks in the vault
  */
-export async function loadAllBlocks(app: App): Promise<Block[]> {
+export async function loadAllBlocks(app: App): Promise<{
+	blocks: Block[];
+	fileContexts: Map<string, FileContext>;
+}> {
 	const blocks: Block[] = [];
+	const fileContexts = new Map<string, FileContext>();
 	const files = app.vault.getFiles();
 
 	for (const file of files) {
 		if (file.extension === "md") {
 			try {
 				const content = await app.vault.read(file);
-				const fileBlocks = extractBlocksFromMarkdown(content, file.path);
+				const fileContext = buildFileContext(app, file, content);
+				fileContexts.set(file.path, fileContext);
+				const fileBlocks = extractBlocksFromMarkdown(
+					content,
+					file.path,
+					fileContext.lineToSectionId
+				);
 				blocks.push(...fileBlocks);
 			} catch (error) {
 				console.error(`Error reading file ${file.path}:`, error);
@@ -125,5 +117,5 @@ export async function loadAllBlocks(app: App): Promise<Block[]> {
 		}
 	}
 
-	return blocks;
+	return { blocks, fileContexts };
 }
