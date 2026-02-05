@@ -3,10 +3,14 @@ import BlockSearchPlugin from "./main";
 
 export interface BlockSearchSettings {
 	caseSensitive: boolean;
+	openInNewTab: boolean;
+	openInModal: boolean;
 }
 
 export const DEFAULT_SETTINGS: BlockSearchSettings = {
-	caseSensitive: false
+	caseSensitive: false,
+	openInNewTab: false,
+	openInModal: true,
 }
 
 export class BlockSearchSettingTab extends PluginSettingTab {
@@ -30,6 +34,38 @@ export class BlockSearchSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.caseSensitive = value;
 					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Open in new tab')
+			.setDesc('Open block search in a new workspace tab')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.openInNewTab)
+				.onChange(async (value) => {
+					this.plugin.settings.openInNewTab = value;
+					if (value) {
+						this.plugin.settings.openInModal = false;
+					} else if (!this.plugin.settings.openInModal) {
+						this.plugin.settings.openInModal = true;
+					}
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Open in modal')
+			.setDesc('Open block search in a modal window')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.openInModal)
+				.onChange(async (value) => {
+					this.plugin.settings.openInModal = value;
+					if (value) {
+						this.plugin.settings.openInNewTab = false;
+					} else if (!this.plugin.settings.openInNewTab) {
+						this.plugin.settings.openInNewTab = true;
+					}
+					await this.plugin.saveSettings();
+					this.display();
 				}));
 	}
 }
