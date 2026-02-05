@@ -461,6 +461,16 @@ export class SearchPanel {
 			this.setVimMode(this.vimMode);
 		});
 
+		const handleFocusShortcut = (e: KeyboardEvent) => {
+			if (!this.inputEl) return;
+			if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === "f" || e.code === "KeyF")) {
+				e.preventDefault();
+				this.inputEl.focus();
+			}
+		};
+		this.containerEl.addEventListener("keydown", handleFocusShortcut);
+		window.addEventListener("keydown", handleFocusShortcut, { capture: true });
+
 		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
