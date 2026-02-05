@@ -178,6 +178,10 @@
   color: color-mix(in srgb, var(--bs-accent) 65%, var(--text-normal) 35%);
 }
 
+.block-search-vim-mode[data-mode="visual"] {
+  color: color-mix(in srgb, var(--bs-accent-strong) 65%, var(--text-normal) 35%);
+}
+
 .block-search-results {
   background: var(--bs-surface);
   border: 1px solid var(--bs-border);

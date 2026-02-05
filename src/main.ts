@@ -11,7 +11,11 @@ export default class BlockSearchPlugin extends Plugin {
 
 		this.registerView(
 			VIEW_TYPE_BLOCK_SEARCH,
-			(leaf) => new BlockSearchView(leaf, this.settings.caseSensitive)
+			(leaf) => new BlockSearchView(
+				leaf,
+				this.settings.caseSensitive,
+				this.settings.enableVimKeybindings
+			)
 		);
 
 		// Register the block search command
@@ -24,7 +28,11 @@ export default class BlockSearchPlugin extends Plugin {
 					void leaf.setViewState({ type: VIEW_TYPE_BLOCK_SEARCH, active: true });
 					return;
 				}
-				new SearchModal(this.app, this.settings.caseSensitive).open();
+				new SearchModal(
+					this.app,
+					this.settings.caseSensitive,
+					this.settings.enableVimKeybindings
+				).open();
 			}
 		});
 

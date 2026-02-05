@@ -6,10 +6,12 @@ export const VIEW_TYPE_BLOCK_SEARCH = "block-search-view";
 export class BlockSearchView extends ItemView {
 	private panel: SearchPanel | null = null;
 	private caseSensitive: boolean;
+	private enableVim: boolean;
 
-	constructor(leaf: WorkspaceLeaf, caseSensitive: boolean) {
+	constructor(leaf: WorkspaceLeaf, caseSensitive: boolean, enableVim: boolean) {
 		super(leaf);
 		this.caseSensitive = caseSensitive;
+		this.enableVim = enableVim;
 	}
 
 	getViewType() {
@@ -23,6 +25,7 @@ export class BlockSearchView extends ItemView {
 	async onOpen() {
 		this.panel = new SearchPanel(this.app, this.contentEl, {
 			caseSensitive: this.caseSensitive,
+			enableVim: this.enableVim,
 		});
 		await this.panel.mount();
 	}

@@ -5,12 +5,14 @@ export interface BlockSearchSettings {
 	caseSensitive: boolean;
 	openInNewTab: boolean;
 	openInModal: boolean;
+	enableVimKeybindings: boolean;
 }
 
 export const DEFAULT_SETTINGS: BlockSearchSettings = {
 	caseSensitive: false,
 	openInNewTab: false,
 	openInModal: true,
+	enableVimKeybindings: false,
 }
 
 export class BlockSearchSettingTab extends PluginSettingTab {
@@ -66,6 +68,16 @@ export class BlockSearchSettingTab extends PluginSettingTab {
 					}
 					await this.plugin.saveSettings();
 					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Enable Vim keybindings')
+			.setDesc('Use basic Vim NORMAL/INSERT keybindings in the search input')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableVimKeybindings)
+				.onChange(async (value) => {
+					this.plugin.settings.enableVimKeybindings = value;
+					await this.plugin.saveSettings();
 				}));
 	}
 }
