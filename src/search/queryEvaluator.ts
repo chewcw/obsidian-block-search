@@ -94,7 +94,24 @@ function evaluateOperatorTerm(term: OperatorTerm, ctx: EvalContext, caseOverride
 
 function evaluateTag(operand: QueryNode, ctx: EvalContext, caseOverride?: boolean): EvalResult {
 	let best: EvalResult = { matched: false, score: 0 };
+	const tagsToCheck = new Set<string>();
+
 	for (const tag of ctx.file.tags) {
+		const normalized = tag.startsWith("#") ? tag.slice(1) : tag;
+		tagsToCheck.add(tag);
+		tagsToCheck.add(normalized);
+		tagsToCheck.add(`#${normalized}`);
+	}
+
+	const inlineTagMatches = ctx.group.groupText.match(/#[\\p{L}\\p{N}_/-]+/gu) ?? [];
+	for (const inlineTag of inlineTagMatches) {
+		const normalized = inlineTag.startsWith("#") ? inlineTag.slice(1) : inlineTag;
+		tagsToCheck.add(inlineTag);
+		tagsToCheck.add(normalized);
+		tagsToCheck.add(`#${normalized}`);
+	}
+
+	for (const tag of tagsToCheck) {
 		const result = evaluateTextQueryOnText(operand, tag, caseOverride ?? ctx.caseSensitive);
 		if (result.matched && result.score > best.score) best = result;
 	}
