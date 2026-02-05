@@ -456,6 +456,11 @@ export class SearchPanel {
 			}
 		});
 
+		input.addEventListener("focus", () => {
+			if (!this.enableVim) return;
+			this.setVimMode(this.vimMode);
+		});
+
 		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
