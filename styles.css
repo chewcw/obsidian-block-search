@@ -5,9 +5,9 @@
   --bs-bg: color-mix(in srgb, var(--background-primary) 88%, #0b0e14 12%);
   --bs-surface: color-mix(in srgb, var(--background-secondary) 86%, #0b0e14 14%);
   --bs-border: color-mix(in srgb, var(--background-modifier-border) 60%, #1a222c 40%);
-  --bs-title-font: "Fraunces", "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
-  --bs-body-font: "Source Sans 3", "Avenir Next", "Segoe UI", sans-serif;
-  --bs-mono-font: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
+  --bs-title-font: var(--font-interface);
+  --bs-body-font: var(--font-interface);
+  --bs-mono-font: var(--font-monospace);
   position: relative;
   padding: 20px 22px 24px;
   color: var(--text-normal);
@@ -51,7 +51,6 @@
 }
 
 .block-search-title {
-  font-family: var(--bs-title-font);
   font-size: 26px;
   letter-spacing: 0.2px;
 }
@@ -218,6 +217,13 @@
 }
 
 .block-search-result.selected {
+  border-color: var(--bs-accent);
+  box-shadow: 0 10px 24px rgba(224, 122, 63, 0.2);
+}
+
+.block-search-result:focus,
+.block-search-result:focus-visible {
+  outline: none;
   border-color: var(--bs-accent);
   box-shadow: 0 10px 24px rgba(224, 122, 63, 0.2);
 }

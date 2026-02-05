@@ -17,6 +17,9 @@ export class SearchModal extends Modal {
 	private selectedIndex: number = 0;
 	private caseSensitive: boolean = false;
 	private lastSearchedQuery: string = "";
+	private inputEl: HTMLInputElement | null = null;
+	private searchButtonEl: HTMLButtonElement | null = null;
+	private resultsContainerEl: HTMLElement | null = null;
 
 	constructor(app: App, caseSensitive: boolean = false) {
 		super(app);
@@ -64,6 +67,7 @@ export class SearchModal extends Modal {
 			placeholder: "Search blocks...",
 			cls: "block-search-input",
 		});
+		this.inputEl = input;
 
 		input.focus();
 
@@ -90,15 +94,40 @@ export class SearchModal extends Modal {
 		const resultsContainer = shell.createEl("div", {
 			cls: "block-search-results",
 		});
+		this.resultsContainerEl = resultsContainer;
 
 		// Create Search button
 		const searchBtn = inputContainer.createEl("button", {
 			text: "Search",
 			cls: "block-search-button",
 		});
+		searchBtn.setAttr("type", "button");
+		this.searchButtonEl = searchBtn;
 		searchBtn.addEventListener("click", () => {
 			this.performSearch(resultsContainer);
 		});
+
+		const moveFocus = (delta: number, current: HTMLElement) => {
+			const focusables = this.getFocusOrder();
+			const index = focusables.indexOf(current);
+			if (index === -1 || focusables.length === 0) return;
+			const nextIndex = Math.min(
+				Math.max(index + delta, 0),
+				focusables.length - 1
+			);
+			if (nextIndex !== index) {
+				focusables[nextIndex]!.focus();
+			}
+		};
+
+		const handleTab = (e: KeyboardEvent, current: HTMLElement) => {
+			if (e.key !== "Tab") return;
+			e.preventDefault();
+			moveFocus(e.shiftKey ? -1 : 1, current);
+		};
+
+		input.addEventListener("keydown", (e) => handleTab(e, input));
+		searchBtn.addEventListener("keydown", (e) => handleTab(e, searchBtn));
 
 		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
@@ -203,6 +232,9 @@ export class SearchModal extends Modal {
 					"block-search-result" +
 					(index === this.selectedIndex ? " selected" : ""),
 			});
+			resultEl.setAttr("tabindex", "0");
+			resultEl.setAttr("role", "button");
+			resultEl.setAttr("aria-label", `Jump to result ${index + 1}`);
 
 			const resultHead = resultEl.createEl("div", {
 				cls: "block-search-result-head",
@@ -225,10 +257,11 @@ export class SearchModal extends Modal {
 			});
 
 			const actions = resultHead.createEl("div", { cls: "block-search-actions" });
-			actions.createEl("button", {
+			const jumpBtn = actions.createEl("button", {
 				text: "Jump",
 				cls: "block-search-jump-button",
 			});
+			jumpBtn.setAttr("type", "button");
 
 			// Grouped block text with highlighting
 			const textEl = resultEl.createEl("div", { cls: "block-search-text" });
@@ -243,10 +276,52 @@ export class SearchModal extends Modal {
 				this.highlightTextWithRegexes(lineEl, lineStr, regexes);
 			});
 
+			const jumpTo = () => this.jumpToBlock(result.blocks[0]!);
+
 			resultEl.addEventListener("click", () => {
+				jumpTo();
+			});
+
+			resultEl.addEventListener("keydown", (e) => {
+				if (e.key === "Tab") {
+					e.preventDefault();
+					const focusables = this.getFocusOrder();
+					const index = focusables.indexOf(resultEl);
+					if (index !== -1) {
+						const nextIndex = Math.min(
+							Math.max(index + (e.shiftKey ? -1 : 1), 0),
+							focusables.length - 1
+						);
+						if (nextIndex !== index) {
+							focusables[nextIndex]!.focus();
+						}
+					}
+					return;
+				}
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					jumpTo();
+				}
+			});
+
+			jumpBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
 				this.jumpToBlock(result.blocks[0]!);
 			});
 		});
+	}
+
+	private getFocusOrder(): HTMLElement[] {
+		const focusables: HTMLElement[] = [];
+		if (this.inputEl) focusables.push(this.inputEl);
+		if (this.searchButtonEl) focusables.push(this.searchButtonEl);
+		if (this.resultsContainerEl) {
+			const results = Array.from(
+				this.resultsContainerEl.querySelectorAll<HTMLElement>(".block-search-result")
+			);
+			focusables.push(...results);
+		}
+		return focusables;
 	}
 
 	private buildHighlightRegexes(): RegExp[] {
