@@ -159,6 +159,25 @@
   color: var(--text-normal);
 }
 
+.block-search-vim-mode {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: color-mix(in srgb, var(--bs-surface) 75%, #000 25%);
+  color: var(--text-muted);
+}
+
+.block-search-vim-mode[data-mode="insert"] {
+  color: color-mix(in srgb, var(--bs-accent-cool) 65%, var(--text-normal) 35%);
+}
+
+.block-search-vim-mode[data-mode="normal"] {
+  color: color-mix(in srgb, var(--bs-accent) 65%, var(--text-normal) 35%);
+}
+
 .block-search-results {
   background: var(--bs-surface);
   border: 1px solid var(--bs-border);

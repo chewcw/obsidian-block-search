@@ -27,6 +27,8 @@ export class SearchPanel {
 	private inputEl: HTMLInputElement | null = null;
 	private searchButtonEl: HTMLButtonElement | null = null;
 	private resultsContainerEl: HTMLElement | null = null;
+	private vimMode: "insert" | "normal" = "insert";
+	private vimModeEl: HTMLElement | null = null;
 
 	constructor(app: App, containerEl: HTMLElement, options: SearchPanelOptions = {}) {
 		this.app = app;
@@ -78,6 +80,12 @@ export class SearchPanel {
 		});
 		this.inputEl = input;
 
+		const modeIndicator = inputContainer.createEl("span", {
+			cls: "block-search-vim-mode",
+		});
+		this.vimModeEl = modeIndicator;
+		this.setVimMode("insert");
+
 		input.focus();
 
 		const searchHint = shell.createEl("div", { cls: "block-search-hints" });
@@ -116,6 +124,79 @@ export class SearchPanel {
 			this.performSearch(resultsContainer);
 		});
 
+		const handleEnter = () => {
+			if (!this.query.trim()) return;
+			if (this.query !== this.lastSearchedQuery) {
+				this.performSearch(resultsContainer);
+			} else if (this.results && this.results.length > 0) {
+				const selected = this.results[this.selectedIndex];
+				if (selected) {
+					this.jumpToBlock(selected.blocks[0]!);
+				}
+			}
+		};
+
+		const applyInputValue = (value: string) => {
+			input.value = value;
+			this.query = value;
+			this.selectedIndex = 0;
+			this.updateResults(resultsContainer);
+		};
+
+		const moveCursor = (delta: number) => {
+			const value = input.value;
+			const pos = input.selectionStart ?? 0;
+			const next = Math.max(0, Math.min(value.length, pos + delta));
+			input.setSelectionRange(next, next);
+		};
+
+		const moveCursorToStart = () => {
+			input.setSelectionRange(0, 0);
+		};
+
+		const moveCursorToEnd = () => {
+			const value = input.value;
+			input.setSelectionRange(value.length, value.length);
+		};
+
+		const moveCursorByWord = (direction: "forward" | "backward") => {
+			const value = input.value;
+			let pos = input.selectionStart ?? 0;
+			const isWordChar = (ch: string) => /[A-Za-z0-9_]/.test(ch);
+
+			if (direction === "forward") {
+				while (pos < value.length && isWordChar(value[pos] ?? "")) pos++;
+				while (pos < value.length && !isWordChar(value[pos] ?? "")) pos++;
+			} else {
+				pos = Math.max(0, pos - 1);
+				while (pos > 0 && !isWordChar(value[pos] ?? "")) pos--;
+				while (pos > 0 && isWordChar(value[pos - 1] ?? "")) pos--;
+			}
+			input.setSelectionRange(pos, pos);
+		};
+
+		const deleteCharUnderCursor = () => {
+			const value = input.value;
+			const pos = input.selectionStart ?? 0;
+			if (pos >= value.length) return;
+			const nextValue = value.slice(0, pos) + value.slice(pos + 1);
+			applyInputValue(nextValue);
+			input.setSelectionRange(pos, pos);
+		};
+
+		const deleteWordBackward = () => {
+			const value = input.value;
+			let pos = input.selectionStart ?? 0;
+			const isWordChar = (ch: string) => /[A-Za-z0-9_]/.test(ch);
+			if (pos === 0) return;
+			let start = pos;
+			while (start > 0 && !isWordChar(value[start - 1] ?? "")) start--;
+			while (start > 0 && isWordChar(value[start - 1] ?? "")) start--;
+			const nextValue = value.slice(0, start) + value.slice(pos);
+			applyInputValue(nextValue);
+			input.setSelectionRange(start, start);
+		};
+
 		const moveFocus = (delta: number, current: HTMLElement) => {
 			const focusables = this.getFocusOrder();
 			const index = focusables.indexOf(current);
@@ -138,6 +219,106 @@ export class SearchPanel {
 		input.addEventListener("keydown", (e) => handleTab(e, input));
 		searchBtn.addEventListener("keydown", (e) => handleTab(e, searchBtn));
 
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Tab") return;
+			if (e.ctrlKey) {
+				if (e.key === "[" || e.code === "BracketLeft") {
+					e.preventDefault();
+					this.setVimMode("normal");
+					return;
+				}
+				if (this.vimMode === "insert") {
+					if (e.key === "h") {
+						e.preventDefault();
+						const value = input.value;
+						const pos = input.selectionStart ?? 0;
+						if (pos === 0) return;
+						const nextValue = value.slice(0, pos - 1) + value.slice(pos);
+						applyInputValue(nextValue);
+						input.setSelectionRange(pos - 1, pos - 1);
+						return;
+					}
+					if (e.key === "w") {
+						e.preventDefault();
+						deleteWordBackward();
+						return;
+					}
+					if (e.key === "m") {
+						e.preventDefault();
+						handleEnter();
+						return;
+					}
+				}
+				return;
+			}
+			if (e.metaKey || e.altKey) return;
+
+			if (this.vimMode === "insert") {
+				if (e.key === "Escape") {
+					e.preventDefault();
+					this.setVimMode("normal");
+				}
+				return;
+			}
+
+			switch (e.key) {
+				case "i":
+					e.preventDefault();
+					this.setVimMode("insert");
+					break;
+				case "a":
+					e.preventDefault();
+					this.setVimMode("insert");
+					moveCursor(1);
+					break;
+				case "h":
+					e.preventDefault();
+					moveCursor(-1);
+					break;
+				case "l":
+					e.preventDefault();
+					moveCursor(1);
+					break;
+				case "0":
+					e.preventDefault();
+					moveCursorToStart();
+					break;
+				case "$":
+					e.preventDefault();
+					moveCursorToEnd();
+					break;
+				case "w":
+					e.preventDefault();
+					moveCursorByWord("forward");
+					break;
+				case "b":
+					e.preventDefault();
+					moveCursorByWord("backward");
+					break;
+				case "x":
+					e.preventDefault();
+					deleteCharUnderCursor();
+					break;
+				case "/":
+					e.preventDefault();
+					this.setVimMode("insert");
+					break;
+				case "Enter":
+					e.preventDefault();
+					handleEnter();
+					break;
+				case "Escape":
+					e.preventDefault();
+					this.setVimMode("normal");
+					break;
+				default:
+					if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+						e.preventDefault();
+					}
+					break;
+			}
+		});
+
 		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
 			this.query = (e.target as HTMLInputElement).value;
@@ -147,6 +328,7 @@ export class SearchPanel {
 
 		// Handle keyboard navigation
 		input.addEventListener("keydown", (e) => {
+			if (this.vimMode === "normal") return;
 			if (e.key === "ArrowDown") {
 				e.preventDefault();
 				this.selectedIndex = Math.min(
@@ -160,18 +342,7 @@ export class SearchPanel {
 				this.updateResults(resultsContainer);
 			} else if (e.key === "Enter") {
 				e.preventDefault();
-				if (!this.query.trim()) return;
-				// If query changed since last search, perform search; otherwise, jump to selected result
-				if (this.query !== this.lastSearchedQuery) {
-					this.performSearch(resultsContainer);
-				} else {
-					if (this.results && this.results.length > 0) {
-						const selected = this.results[this.selectedIndex];
-						if (selected) {
-							this.jumpToBlock(selected.blocks[0]!);
-						}
-					}
-				}
+				handleEnter();
 			}
 		});
 
@@ -518,5 +689,13 @@ export class SearchPanel {
 				el.removeClass("selected");
 			}
 		});
+	}
+
+	private setVimMode(mode: "insert" | "normal") {
+		this.vimMode = mode;
+		if (this.vimModeEl) {
+			this.vimModeEl.setText(mode === "insert" ? "INSERT" : "NORMAL");
+			this.vimModeEl.setAttr("data-mode", mode);
+		}
 	}
 }
