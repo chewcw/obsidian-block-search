@@ -28,6 +28,22 @@ export class SearchModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass("block-search-modal");
 
+		const shell = contentEl.createEl("div", { cls: "block-search-shell" });
+		const header = shell.createEl("div", { cls: "block-search-header" });
+		const headerText = header.createEl("div", { cls: "block-search-header-text" });
+		headerText.createEl("div", { text: "Block search", cls: "block-search-title" });
+		headerText.createEl("div", {
+			text: "Scan your vault by phrase, tag, or structure.",
+			cls: "block-search-subtitle",
+		});
+		const headerMeta = header.createEl("div", { cls: "block-search-header-meta" });
+		if (this.caseSensitive) {
+			headerMeta.createEl("span", {
+				text: "Case sensitive",
+				cls: "block-search-pill",
+			});
+		}
+
 		// Load all blocks from vault
 		try {
 			const index = await loadAllBlocks(this.app);
@@ -39,7 +55,7 @@ export class SearchModal extends Modal {
 		}
 
 		// Create search input
-		const inputContainer = contentEl.createEl("div", {
+		const inputContainer = shell.createEl("div", {
 			cls: "block-search-input-container",
 		});
 
@@ -51,8 +67,27 @@ export class SearchModal extends Modal {
 
 		input.focus();
 
+		const searchHint = shell.createEl("div", { cls: "block-search-hints" });
+		const hintText = searchHint.createEl("div", { cls: "block-search-hint-text" });
+		hintText.createEl("span", { text: "Enter", cls: "block-search-hint-label" });
+		hintText.createEl("span", { text: "to search •", cls: "block-search-hint-muted" });
+		hintText.createEl("span", { text: "↑/↓", cls: "block-search-hint-label" });
+		hintText.createEl("span", { text: "to navigate", cls: "block-search-hint-muted" });
+		const hintChips = searchHint.createEl("div", { cls: "block-search-chips" });
+		const chipValues = [
+			'"exact phrase"',
+			"/regex/",
+			"file:meeting",
+			"tag:project",
+			"[priority:high]",
+			"-exclude",
+		];
+		chipValues.forEach((chip) => {
+			hintChips.createEl("span", { text: chip, cls: "block-search-chip" });
+		});
+
 		// Create results container
-		const resultsContainer = contentEl.createEl("div", {
+		const resultsContainer = shell.createEl("div", {
 			cls: "block-search-results",
 		});
 
@@ -150,6 +185,18 @@ export class SearchModal extends Modal {
 			return;
 		}
 
+		const resultsHeader = resultsContainer.createEl("div", {
+			cls: "block-search-results-header",
+		});
+		resultsHeader.createEl("div", {
+			text: `${this.results.length} result${this.results.length === 1 ? "" : "s"}`,
+			cls: "block-search-results-count",
+		});
+		resultsHeader.createEl("div", {
+			text: `for "${this.lastSearchedQuery}"`,
+			cls: "block-search-results-query",
+		});
+
 		this.results.forEach((result, index) => {
 			const resultEl = resultsContainer.createEl("div", {
 				cls:
@@ -157,9 +204,17 @@ export class SearchModal extends Modal {
 					(index === this.selectedIndex ? " selected" : ""),
 			});
 
+			const resultHead = resultEl.createEl("div", {
+				cls: "block-search-result-head",
+			});
+			resultHead.createEl("div", {
+				text: `${String(index + 1).padStart(2, "0")}`,
+				cls: "block-search-result-index",
+			});
+
 			// File and line info (first block of the group)
 			const head = result.blocks[0]!; // guaranteed non-empty group
-			const infoEl = resultEl.createEl("div", { cls: "block-search-info" });
+			const infoEl = resultHead.createEl("div", { cls: "block-search-info" });
 			infoEl.createEl("span", {
 				text: head.fileName,
 				cls: "block-search-file",
@@ -167,6 +222,12 @@ export class SearchModal extends Modal {
 			infoEl.createEl("span", {
 				text: `Line ${head.lineNumber + 1}`,
 				cls: "block-search-line",
+			});
+
+			const actions = resultHead.createEl("div", { cls: "block-search-actions" });
+			actions.createEl("button", {
+				text: "Jump",
+				cls: "block-search-jump-button",
 			});
 
 			// Grouped block text with highlighting
@@ -180,12 +241,6 @@ export class SearchModal extends Modal {
 				const lineStr = `${indent}- ${blk.text}`;
 				const lineEl = textEl.createEl("div", { cls: "block-search-line-item" });
 				this.highlightTextWithRegexes(lineEl, lineStr, regexes);
-			});
-
-			// Jump to button
-			resultEl.createEl("button", {
-				text: "Jump",
-				cls: "block-search-jump-button",
 			});
 
 			resultEl.addEventListener("click", () => {
