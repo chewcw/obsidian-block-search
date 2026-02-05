@@ -278,11 +278,31 @@ export class SearchModal extends Modal {
 
 			const jumpTo = () => this.jumpToBlock(result.blocks[0]!);
 
+			resultEl.addEventListener("focus", () => {
+				this.selectedIndex = index;
+				this.updateResultSelection();
+			});
+
 			resultEl.addEventListener("click", () => {
 				jumpTo();
 			});
 
 			resultEl.addEventListener("keydown", (e) => {
+				if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+					e.preventDefault();
+					const results = this.getResultElements();
+					const currentIndex = results.indexOf(resultEl);
+					if (currentIndex !== -1) {
+						const nextIndex =
+							e.key === "ArrowDown"
+								? Math.min(currentIndex + 1, results.length - 1)
+								: Math.max(currentIndex - 1, 0);
+						if (nextIndex !== currentIndex) {
+							results[nextIndex]!.focus();
+						}
+					}
+					return;
+				}
 				if (e.key === "Tab") {
 					e.preventDefault();
 					const focusables = this.getFocusOrder();
@@ -315,13 +335,26 @@ export class SearchModal extends Modal {
 		const focusables: HTMLElement[] = [];
 		if (this.inputEl) focusables.push(this.inputEl);
 		if (this.searchButtonEl) focusables.push(this.searchButtonEl);
-		if (this.resultsContainerEl) {
-			const results = Array.from(
-				this.resultsContainerEl.querySelectorAll<HTMLElement>(".block-search-result")
-			);
-			focusables.push(...results);
-		}
+		focusables.push(...this.getResultElements());
 		return focusables;
+	}
+
+	private getResultElements(): HTMLElement[] {
+		if (!this.resultsContainerEl) return [];
+		return Array.from(
+			this.resultsContainerEl.querySelectorAll<HTMLElement>(".block-search-result")
+		);
+	}
+
+	private updateResultSelection() {
+		const results = this.getResultElements();
+		results.forEach((el, idx) => {
+			if (idx === this.selectedIndex) {
+				el.addClass("selected");
+			} else {
+				el.removeClass("selected");
+			}
+		});
 	}
 
 	private buildHighlightRegexes(): RegExp[] {
