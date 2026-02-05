@@ -404,6 +404,15 @@ export class SearchPanel {
 						deleteCharUnderCursor();
 					}
 					break;
+				case "c":
+					e.preventDefault();
+					if (this.vimMode === "visual") {
+						deleteSelectionOrChar(false);
+					} else {
+						deleteCharUnderCursor();
+					}
+					this.setVimMode("insert");
+					break;
 				case "X":
 					e.preventDefault();
 					deleteSelectionOrChar(true);
