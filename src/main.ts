@@ -1,6 +1,7 @@
 import { Plugin } from 'obsidian';
 import { DEFAULT_SETTINGS, BlockSearchSettings, BlockSearchSettingTab } from "./settings";
 import { SearchModal } from "./ui/searchModal";
+import { BlockSearchView, VIEW_TYPE_BLOCK_SEARCH } from "./ui/searchView";
 
 export default class BlockSearchPlugin extends Plugin {
 	settings: BlockSearchSettings;
@@ -8,11 +9,21 @@ export default class BlockSearchPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		this.registerView(
+			VIEW_TYPE_BLOCK_SEARCH,
+			(leaf) => new BlockSearchView(leaf, this.settings.caseSensitive)
+		);
+
 		// Register the block search command
 		this.addCommand({
 			id: 'block-search-open',
 			name: 'Open block search',
 			callback: () => {
+				if (this.settings.openInNewTab) {
+					const leaf = this.app.workspace.getLeaf(true);
+					void leaf.setViewState({ type: VIEW_TYPE_BLOCK_SEARCH, active: true });
+					return;
+				}
 				new SearchModal(this.app, this.settings.caseSensitive).open();
 			}
 		});
@@ -22,6 +33,7 @@ export default class BlockSearchPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_BLOCK_SEARCH);
 	}
 
 	async loadSettings() {
