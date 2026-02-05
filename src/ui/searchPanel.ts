@@ -32,6 +32,10 @@ export class SearchPanel {
 	private vimMode: "insert" | "normal" | "visual" = "insert";
 	private vimModeEl: HTMLElement | null = null;
 	private vimVisualAnchor: number | null = null;
+	private tagSuggestionEl: HTMLElement | null = null;
+	private tagSuggestions: Array<{ tag: string; count: number }> = [];
+	private tagSuggestionIndex: number = 0;
+	private tagSuggestionContext: { start: number; end: number } | null = null;
 
 	constructor(app: App, containerEl: HTMLElement, options: SearchPanelOptions = {}) {
 		this.app = app;
@@ -83,6 +87,11 @@ export class SearchPanel {
 			cls: "block-search-input",
 		});
 		this.inputEl = input;
+
+		const tagSuggestionEl = inputContainer.createEl("div", {
+			cls: "block-search-tag-suggestions",
+		});
+		this.tagSuggestionEl = tagSuggestionEl;
 
 		if (this.enableVim) {
 			const modeIndicator = inputContainer.createEl("span", {
@@ -476,10 +485,57 @@ export class SearchPanel {
 			this.query = (e.target as HTMLInputElement).value;
 			this.selectedIndex = 0;
 			this.updateResults(resultsContainer); // will show prompt to press Enter or click Search
+			this.updateTagSuggestions();
 		});
 
 		// Handle keyboard navigation
 		input.addEventListener("keydown", (e) => {
+			if (this.tagSuggestionEl?.classList.contains("is-open") && this.enableVim && this.vimMode !== "insert") {
+				if (e.key === "j") {
+					e.preventDefault();
+					this.tagSuggestionIndex = Math.min(
+						this.tagSuggestionIndex + 1,
+						this.tagSuggestions.length - 1
+					);
+					this.renderTagSuggestions();
+					return;
+				}
+				if (e.key === "k") {
+					e.preventDefault();
+					this.tagSuggestionIndex = Math.max(this.tagSuggestionIndex - 1, 0);
+					this.renderTagSuggestions();
+					return;
+				}
+			}
+
+			if (this.tagSuggestionEl?.classList.contains("is-open")) {
+				if (e.key === "ArrowDown") {
+					e.preventDefault();
+					this.tagSuggestionIndex = Math.min(
+						this.tagSuggestionIndex + 1,
+						this.tagSuggestions.length - 1
+					);
+					this.renderTagSuggestions();
+					return;
+				}
+				if (e.key === "ArrowUp") {
+					e.preventDefault();
+					this.tagSuggestionIndex = Math.max(this.tagSuggestionIndex - 1, 0);
+					this.renderTagSuggestions();
+					return;
+				}
+				if (e.key === "Enter" || e.key === "Tab") {
+					e.preventDefault();
+					this.applyTagSuggestion();
+					return;
+				}
+				if (e.key === "Escape") {
+					e.preventDefault();
+					this.closeTagSuggestions();
+					return;
+				}
+			}
+
 			if (this.enableVim && this.vimMode === "normal") return;
 			if (e.key === "ArrowDown") {
 				e.preventDefault();
@@ -503,6 +559,7 @@ export class SearchPanel {
 	}
 
 	destroy() {
+		this.closeTagSuggestions();
 		this.containerEl.empty();
 	}
 
@@ -901,5 +958,95 @@ export class SearchPanel {
 			this.vimModeEl.setText(label);
 			this.vimModeEl.setAttr("data-mode", mode);
 		}
+	}
+
+	private updateTagSuggestions() {
+		if (!this.inputEl || !this.tagSuggestionEl) return;
+		if (this.enableVim && this.vimMode !== "insert") {
+			this.closeTagSuggestions();
+			return;
+		}
+		const pos = this.inputEl.selectionStart ?? 0;
+		const value = this.inputEl.value;
+		const before = value.slice(0, pos);
+		const lastSpace = Math.max(
+			before.lastIndexOf(" "),
+			before.lastIndexOf("\n"),
+			before.lastIndexOf("\t")
+		);
+		const tokenStart = lastSpace === -1 ? 0 : lastSpace + 1;
+		const token = before.slice(tokenStart);
+		if (!token.startsWith("tag:")) {
+			this.closeTagSuggestions();
+			return;
+		}
+		const partialRaw = token.slice("tag:".length);
+		if (!/^[^\\s]*$/.test(partialRaw)) {
+			this.closeTagSuggestions();
+			return;
+		}
+		const partial = partialRaw.replace(/^#/, "");
+		this.tagSuggestionContext = { start: tokenStart, end: pos };
+
+		const tagsMap = (this.app.metadataCache as unknown as { getTags?: () => Record<string, number> }).getTags?.() ?? {};
+		const tags = Object.entries(tagsMap).map(([tag, count]) => ({
+			tag: tag.startsWith("#") ? tag.slice(1) : tag,
+			count: typeof count === "number" ? count : 0,
+		}));
+
+		const filtered = tags
+			.filter((item) => item.tag.toLowerCase().startsWith(partial.toLowerCase()))
+			.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+			.slice(0, 10);
+
+		if (filtered.length === 0) {
+			this.closeTagSuggestions();
+			return;
+		}
+		this.tagSuggestions = filtered;
+		this.tagSuggestionIndex = Math.min(this.tagSuggestionIndex, filtered.length - 1);
+		this.renderTagSuggestions();
+	}
+
+	private renderTagSuggestions() {
+		if (!this.tagSuggestionEl) return;
+		this.tagSuggestionEl.empty();
+		this.tagSuggestions.forEach((item, index) => {
+			const row = this.tagSuggestionEl!.createEl("div", {
+				cls: "block-search-tag-item" + (index === this.tagSuggestionIndex ? " is-active" : ""),
+			});
+			row.createEl("span", { text: item.tag, cls: "block-search-tag-label" });
+			row.createEl("span", { text: String(item.count), cls: "block-search-tag-count" });
+			row.addEventListener("click", () => {
+				this.tagSuggestionIndex = index;
+				this.applyTagSuggestion();
+			});
+		});
+		this.tagSuggestionEl.addClass("is-open");
+	}
+
+	private applyTagSuggestion() {
+		if (!this.inputEl || !this.tagSuggestionContext) return;
+		const selected = this.tagSuggestions[this.tagSuggestionIndex];
+		if (!selected) return;
+		const value = this.inputEl.value;
+		const before = value.slice(0, this.tagSuggestionContext.start);
+		const after = value.slice(this.tagSuggestionContext.end);
+		const insert = `tag:#${selected.tag}`;
+		const nextValue = `${before}${insert}${after}`;
+		this.inputEl.value = nextValue;
+		this.query = nextValue;
+		const nextPos = before.length + insert.length;
+		this.inputEl.setSelectionRange(nextPos, nextPos);
+		this.closeTagSuggestions();
+		this.updateResults(this.resultsContainerEl ?? this.containerEl);
+	}
+
+	private closeTagSuggestions() {
+		this.tagSuggestions = [];
+		this.tagSuggestionIndex = 0;
+		this.tagSuggestionContext = null;
+		this.tagSuggestionEl?.removeClass("is-open");
+		this.tagSuggestionEl?.empty();
 	}
 }
