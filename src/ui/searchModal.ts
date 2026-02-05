@@ -17,6 +17,9 @@ export class SearchModal extends Modal {
 	private selectedIndex: number = 0;
 	private caseSensitive: boolean = false;
 	private lastSearchedQuery: string = "";
+	private inputEl: HTMLInputElement | null = null;
+	private searchButtonEl: HTMLButtonElement | null = null;
+	private resultsContainerEl: HTMLElement | null = null;
 
 	constructor(app: App, caseSensitive: boolean = false) {
 		super(app);
@@ -27,6 +30,22 @@ export class SearchModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("block-search-modal");
+
+		const shell = contentEl.createEl("div", { cls: "block-search-shell" });
+		const header = shell.createEl("div", { cls: "block-search-header" });
+		const headerText = header.createEl("div", { cls: "block-search-header-text" });
+		headerText.createEl("div", { text: "Block search", cls: "block-search-title" });
+		headerText.createEl("div", {
+			text: "Scan your vault by phrase, tag, or structure.",
+			cls: "block-search-subtitle",
+		});
+		const headerMeta = header.createEl("div", { cls: "block-search-header-meta" });
+		if (this.caseSensitive) {
+			headerMeta.createEl("span", {
+				text: "Case sensitive",
+				cls: "block-search-pill",
+			});
+		}
 
 		// Load all blocks from vault
 		try {
@@ -39,7 +58,7 @@ export class SearchModal extends Modal {
 		}
 
 		// Create search input
-		const inputContainer = contentEl.createEl("div", {
+		const inputContainer = shell.createEl("div", {
 			cls: "block-search-input-container",
 		});
 
@@ -48,22 +67,67 @@ export class SearchModal extends Modal {
 			placeholder: "Search blocks...",
 			cls: "block-search-input",
 		});
+		this.inputEl = input;
 
 		input.focus();
 
+		const searchHint = shell.createEl("div", { cls: "block-search-hints" });
+		const hintText = searchHint.createEl("div", { cls: "block-search-hint-text" });
+		hintText.createEl("span", { text: "Enter", cls: "block-search-hint-label" });
+		hintText.createEl("span", { text: "to search •", cls: "block-search-hint-muted" });
+		hintText.createEl("span", { text: "↑/↓", cls: "block-search-hint-label" });
+		hintText.createEl("span", { text: "to navigate", cls: "block-search-hint-muted" });
+		const hintChips = searchHint.createEl("div", { cls: "block-search-chips" });
+		const chipValues = [
+			'"exact phrase"',
+			"/regex/",
+			"file:meeting",
+			"tag:project",
+			"[priority:high]",
+			"-exclude",
+		];
+		chipValues.forEach((chip) => {
+			hintChips.createEl("span", { text: chip, cls: "block-search-chip" });
+		});
+
 		// Create results container
-		const resultsContainer = contentEl.createEl("div", {
+		const resultsContainer = shell.createEl("div", {
 			cls: "block-search-results",
 		});
+		this.resultsContainerEl = resultsContainer;
 
 		// Create Search button
 		const searchBtn = inputContainer.createEl("button", {
 			text: "Search",
 			cls: "block-search-button",
 		});
+		searchBtn.setAttr("type", "button");
+		this.searchButtonEl = searchBtn;
 		searchBtn.addEventListener("click", () => {
 			this.performSearch(resultsContainer);
 		});
+
+		const moveFocus = (delta: number, current: HTMLElement) => {
+			const focusables = this.getFocusOrder();
+			const index = focusables.indexOf(current);
+			if (index === -1 || focusables.length === 0) return;
+			const nextIndex = Math.min(
+				Math.max(index + delta, 0),
+				focusables.length - 1
+			);
+			if (nextIndex !== index) {
+				focusables[nextIndex]!.focus();
+			}
+		};
+
+		const handleTab = (e: KeyboardEvent, current: HTMLElement) => {
+			if (e.key !== "Tab") return;
+			e.preventDefault();
+			moveFocus(e.shiftKey ? -1 : 1, current);
+		};
+
+		input.addEventListener("keydown", (e) => handleTab(e, input));
+		searchBtn.addEventListener("keydown", (e) => handleTab(e, searchBtn));
 
 		// Handle input (don't perform search yet; show instruction)
 		input.addEventListener("input", (e) => {
@@ -150,16 +214,39 @@ export class SearchModal extends Modal {
 			return;
 		}
 
+		const resultsHeader = resultsContainer.createEl("div", {
+			cls: "block-search-results-header",
+		});
+		resultsHeader.createEl("div", {
+			text: `${this.results.length} result${this.results.length === 1 ? "" : "s"}`,
+			cls: "block-search-results-count",
+		});
+		resultsHeader.createEl("div", {
+			text: `for "${this.lastSearchedQuery}"`,
+			cls: "block-search-results-query",
+		});
+
 		this.results.forEach((result, index) => {
 			const resultEl = resultsContainer.createEl("div", {
 				cls:
 					"block-search-result" +
 					(index === this.selectedIndex ? " selected" : ""),
 			});
+			resultEl.setAttr("tabindex", "0");
+			resultEl.setAttr("role", "button");
+			resultEl.setAttr("aria-label", `Jump to result ${index + 1}`);
+
+			const resultHead = resultEl.createEl("div", {
+				cls: "block-search-result-head",
+			});
+			resultHead.createEl("div", {
+				text: `${String(index + 1).padStart(2, "0")}`,
+				cls: "block-search-result-index",
+			});
 
 			// File and line info (first block of the group)
 			const head = result.blocks[0]!; // guaranteed non-empty group
-			const infoEl = resultEl.createEl("div", { cls: "block-search-info" });
+			const infoEl = resultHead.createEl("div", { cls: "block-search-info" });
 			infoEl.createEl("span", {
 				text: head.fileName,
 				cls: "block-search-file",
@@ -168,6 +255,13 @@ export class SearchModal extends Modal {
 				text: `Line ${head.lineNumber + 1}`,
 				cls: "block-search-line",
 			});
+
+			const actions = resultHead.createEl("div", { cls: "block-search-actions" });
+			const jumpBtn = actions.createEl("button", {
+				text: "Jump",
+				cls: "block-search-jump-button",
+			});
+			jumpBtn.setAttr("type", "button");
 
 			// Grouped block text with highlighting
 			const textEl = resultEl.createEl("div", { cls: "block-search-text" });
@@ -182,16 +276,52 @@ export class SearchModal extends Modal {
 				this.highlightTextWithRegexes(lineEl, lineStr, regexes);
 			});
 
-			// Jump to button
-			resultEl.createEl("button", {
-				text: "Jump",
-				cls: "block-search-jump-button",
-			});
+			const jumpTo = () => this.jumpToBlock(result.blocks[0]!);
 
 			resultEl.addEventListener("click", () => {
+				jumpTo();
+			});
+
+			resultEl.addEventListener("keydown", (e) => {
+				if (e.key === "Tab") {
+					e.preventDefault();
+					const focusables = this.getFocusOrder();
+					const index = focusables.indexOf(resultEl);
+					if (index !== -1) {
+						const nextIndex = Math.min(
+							Math.max(index + (e.shiftKey ? -1 : 1), 0),
+							focusables.length - 1
+						);
+						if (nextIndex !== index) {
+							focusables[nextIndex]!.focus();
+						}
+					}
+					return;
+				}
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					jumpTo();
+				}
+			});
+
+			jumpBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
 				this.jumpToBlock(result.blocks[0]!);
 			});
 		});
+	}
+
+	private getFocusOrder(): HTMLElement[] {
+		const focusables: HTMLElement[] = [];
+		if (this.inputEl) focusables.push(this.inputEl);
+		if (this.searchButtonEl) focusables.push(this.searchButtonEl);
+		if (this.resultsContainerEl) {
+			const results = Array.from(
+				this.resultsContainerEl.querySelectorAll<HTMLElement>(".block-search-result")
+			);
+			focusables.push(...results);
+		}
+		return focusables;
 	}
 
 	private buildHighlightRegexes(): RegExp[] {
