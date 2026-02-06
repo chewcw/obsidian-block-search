@@ -7,12 +7,14 @@ import { SearchPanel } from "./searchPanel";
 export class SearchModal extends Modal {
 	private caseSensitive: boolean = false;
 	private enableVim: boolean = false;
+	private hoverPreviewRequireCtrl: boolean = false;
 	private panel: SearchPanel | null = null;
 
-	constructor(app: App, caseSensitive: boolean = false, enableVim: boolean = false) {
+	constructor(app: App, caseSensitive: boolean = false, enableVim: boolean = false, hoverPreviewRequireCtrl: boolean = false) {
 		super(app);
 		this.caseSensitive = caseSensitive;
 		this.enableVim = enableVim;
+		this.hoverPreviewRequireCtrl = hoverPreviewRequireCtrl;
 	}
 
 	async onOpen() {
@@ -20,6 +22,7 @@ export class SearchModal extends Modal {
 			caseSensitive: this.caseSensitive,
 			onJump: () => this.close(),
 			enableVim: this.enableVim,
+			hoverPreviewRequireCtrl: this.hoverPreviewRequireCtrl,
 		});
 		await this.panel.mount();
 	}

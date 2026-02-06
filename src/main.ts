@@ -9,12 +9,18 @@ export default class BlockSearchPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		this.registerHoverLinkSource("block-search", {
+			display: "Block search",
+			defaultMod: this.settings.hoverPreviewRequireCtrl,
+		});
+
 		this.registerView(
 			VIEW_TYPE_BLOCK_SEARCH,
 			(leaf) => new BlockSearchView(
 				leaf,
 				this.settings.caseSensitive,
-				this.settings.enableVimKeybindings
+				this.settings.enableVimKeybindings,
+				this.settings.hoverPreviewRequireCtrl
 			)
 		);
 
@@ -31,7 +37,8 @@ export default class BlockSearchPlugin extends Plugin {
 				new SearchModal(
 					this.app,
 					this.settings.caseSensitive,
-					this.settings.enableVimKeybindings
+					this.settings.enableVimKeybindings,
+					this.settings.hoverPreviewRequireCtrl
 				).open();
 			}
 		});

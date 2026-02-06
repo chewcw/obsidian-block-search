@@ -1,4 +1,4 @@
-import { App, TFile, MarkdownView } from "obsidian";
+import { App, HoverParent, WorkspaceLeaf, TFile, MarkdownView } from "obsidian";
 import { Block, SearchResult } from "../types";
 import { searchBlocks, loadAllBlocks } from "../blocks/searcher";
 import { parseQuery } from "../search/queryParser";
@@ -12,6 +12,7 @@ interface SearchPanelOptions {
 	caseSensitive?: boolean;
 	onJump?: () => void;
 	enableVim?: boolean;
+	hoverPreviewRequireCtrl?: boolean;
 }
 
 export class SearchPanel {
@@ -25,6 +26,7 @@ export class SearchPanel {
 	private caseSensitive: boolean = false;
 	private onJump?: () => void;
 	private enableVim: boolean = false;
+	private hoverPreviewRequireCtrl: boolean = false;
 	private lastSearchedQuery: string = "";
 	private inputEl: HTMLInputElement | null = null;
 	private searchButtonEl: HTMLButtonElement | null = null;
@@ -32,6 +34,9 @@ export class SearchPanel {
 	private vimMode: "insert" | "normal" | "visual" = "insert";
 	private vimModeEl: HTMLElement | null = null;
 	private vimVisualAnchor: number | null = null;
+	private hoverTarget: HTMLElement | null = null;
+	private hoverCleanup: Array<() => void> = [];
+	private hoverSourceId: string = "block-search";
 	private tagSuggestionEl: HTMLElement | null = null;
 	private tagSuggestions: Array<{ tag: string; count: number }> = [];
 	private tagSuggestionIndex: number = 0;
@@ -43,6 +48,7 @@ export class SearchPanel {
 		this.caseSensitive = options.caseSensitive ?? false;
 		this.onJump = options.onJump;
 		this.enableVim = options.enableVim ?? false;
+		this.hoverPreviewRequireCtrl = options.hoverPreviewRequireCtrl ?? false;
 	}
 
 	async mount() {
@@ -559,6 +565,8 @@ export class SearchPanel {
 	}
 
 	destroy() {
+		for (const cleanup of this.hoverCleanup) cleanup();
+		this.hoverCleanup = [];
 		this.closeTagSuggestions();
 		this.containerEl.empty();
 	}
@@ -671,6 +679,28 @@ export class SearchPanel {
 
 			const jumpTo = () => this.jumpToBlock(result.blocks[0]!);
 
+			const handleHover = (event: MouseEvent) => {
+				if (this.hoverPreviewRequireCtrl && !event.ctrlKey) {
+					this.hoverTarget = resultEl;
+					return;
+				}
+				this.showHoverPreview(resultEl, result, event);
+			};
+
+			const handleMove = (event: MouseEvent) => {
+				if (!this.hoverPreviewRequireCtrl) return;
+				if (!event.ctrlKey) {
+					return;
+				}
+				if (this.hoverTarget === resultEl) {
+					this.showHoverPreview(resultEl, result, event);
+				}
+			};
+
+			const handleLeave = () => {
+				this.hoverTarget = null;
+			};
+
 			resultEl.addEventListener("focus", () => {
 				this.selectedIndex = index;
 				this.updateResultSelection();
@@ -678,6 +708,15 @@ export class SearchPanel {
 
 			resultEl.addEventListener("click", () => {
 				jumpTo();
+			});
+
+			resultEl.addEventListener("mouseenter", handleHover);
+			resultEl.addEventListener("mousemove", handleMove);
+			resultEl.addEventListener("mouseleave", handleLeave);
+			this.hoverCleanup.push(() => {
+				resultEl.removeEventListener("mouseenter", handleHover);
+				resultEl.removeEventListener("mousemove", handleMove);
+				resultEl.removeEventListener("mouseleave", handleLeave);
 			});
 
 			resultEl.addEventListener("keydown", (e) => {
@@ -1048,5 +1087,19 @@ export class SearchPanel {
 		this.tagSuggestionContext = null;
 		this.tagSuggestionEl?.removeClass("is-open");
 		this.tagSuggestionEl?.empty();
+	}
+
+	private showHoverPreview(targetEl: HTMLElement, result: SearchResult, event: MouseEvent) {
+		const leaf = this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf();
+		const parent = (leaf as WorkspaceLeaf) ?? null;
+		if (!parent) return;
+		const hoverParent: HoverParent = parent;
+		this.app.workspace.trigger("hover-link", {
+			event,
+			source: this.hoverSourceId,
+			hoverParent,
+			targetEl,
+			linktext: result.blocks[0]?.filePath ?? "",
+		});
 	}
 }

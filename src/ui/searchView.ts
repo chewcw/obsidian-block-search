@@ -7,11 +7,13 @@ export class BlockSearchView extends ItemView {
 	private panel: SearchPanel | null = null;
 	private caseSensitive: boolean;
 	private enableVim: boolean;
+	private hoverPreviewRequireCtrl: boolean;
 
-	constructor(leaf: WorkspaceLeaf, caseSensitive: boolean, enableVim: boolean) {
+	constructor(leaf: WorkspaceLeaf, caseSensitive: boolean, enableVim: boolean, hoverPreviewRequireCtrl: boolean) {
 		super(leaf);
 		this.caseSensitive = caseSensitive;
 		this.enableVim = enableVim;
+		this.hoverPreviewRequireCtrl = hoverPreviewRequireCtrl;
 	}
 
 	getViewType() {
@@ -26,6 +28,7 @@ export class BlockSearchView extends ItemView {
 		this.panel = new SearchPanel(this.app, this.contentEl, {
 			caseSensitive: this.caseSensitive,
 			enableVim: this.enableVim,
+			hoverPreviewRequireCtrl: this.hoverPreviewRequireCtrl,
 		});
 		await this.panel.mount();
 	}

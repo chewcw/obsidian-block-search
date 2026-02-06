@@ -6,6 +6,7 @@ export interface BlockSearchSettings {
 	openInNewTab: boolean;
 	openInModal: boolean;
 	enableVimKeybindings: boolean;
+	hoverPreviewRequireCtrl: boolean;
 }
 
 export const DEFAULT_SETTINGS: BlockSearchSettings = {
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: BlockSearchSettings = {
 	openInNewTab: false,
 	openInModal: true,
 	enableVimKeybindings: false,
+	hoverPreviewRequireCtrl: false,
 }
 
 export class BlockSearchSettingTab extends PluginSettingTab {
@@ -77,6 +79,16 @@ export class BlockSearchSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableVimKeybindings)
 				.onChange(async (value) => {
 					this.plugin.settings.enableVimKeybindings = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Require Ctrl for hover preview')
+			.setDesc('Only show result previews when Ctrl is pressed while hovering')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.hoverPreviewRequireCtrl)
+				.onChange(async (value) => {
+					this.plugin.settings.hoverPreviewRequireCtrl = value;
 					await this.plugin.saveSettings();
 				}));
 	}
